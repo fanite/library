@@ -28,32 +28,26 @@ jobs:
             arch: arm
             runner: ubuntu-latest
             target: arm-linux-androideabi
-            ndk_abi: armeabi-v7a
           - platform: android
             arch: arm64
             runner: ubuntu-latest
             target: aarch64-linux-android
-            ndk_abi: arm64-v8a
           - platform: android
             arch: ia32
             runner: ubuntu-latest
             target: i686-linux-android
-            ndk_abi: x86
           - platform: android
             arch: riscv32
             runner: ubuntu-latest
             target: riscv32-linux-android
-            ndk_abi: riscv32
           - platform: android
             arch: riscv64
             runner: ubuntu-latest
             target: riscv64-linux-android
-            ndk_abi: riscv64
           - platform: android
             arch: x64
             runner: ubuntu-latest
             target: x86_64-linux-android
-            ndk_abi: x86_64
           
           # Fuchsia
           - platform: fuchsia
@@ -109,36 +103,30 @@ jobs:
           
           # Windows
           - platform: windows
-            arch: x64
+            arch: arm64
             runner: windows-latest
-            target: x64
-            generator: "Visual Studio 17 2022"
-            arch_flag: x64
+            target: aarch64-windows
           - platform: windows
             arch: ia32
             runner: windows-latest
-            target: x86
-            generator: "Visual Studio 17 2022"
-            arch_flag: Win32
+            target: i686-windows
           - platform: windows
-            arch: arm64
+            arch: x64
             runner: windows-latest
-            target: arm64
-            generator: "Visual Studio 17 2022"
-            arch_flag: ARM64
+            target: x86_64-windows
 
     steps:
     - name: Checkout QuickJS
       uses: actions/checkout@v4
       with:
         repository: quickjs-ng/quickjs.git
-        ref: ${{ inputs.version }}
+        ref: ${{inputs.version}}
         path: quickjs
 
     - name: Set version
       id: version
       run: |
-        if [ "${{ github.event_name }}" = "push" ]; then
+        if [[ "${{ github.event_name }}" == "push" ]]; then
           VERSION=${GITHUB_REF_NAME#libqjs-}
         else
           VERSION=${{ github.event.inputs.version }}
@@ -156,48 +144,25 @@ jobs:
     - name: Install Android NDK
       if: startsWith(matrix.platform, 'android')
       run: |
-        NDK_VERSION=r26d
-        NDK_ZIP=android-ndk-${NDK_VERSION}-linux.zip
-        NDK_URL=https://dl.google.com/android/repository/${NDK_ZIP}
-        
-        echo "Downloading Android NDK ${NDK_VERSION}..."
-        wget -q ${NDK_URL}
-        
-        echo "Extracting Android NDK..."
-        unzip -q ${NDK_ZIP} -d ${{ runner.temp }}
-        
-        ANDROID_NDK_HOME="${{ runner.temp }}/android-ndk-${NDK_VERSION}"
-        echo "ANDROID_NDK_HOME=${ANDROID_NDK_HOME}" >> $GITHUB_ENV
-        
-        # Verify NDK installation
-        if [ -f "${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" ]; then
-          echo "✅ Android NDK toolchain found"
-        else
-          echo "❌ Android NDK toolchain not found"
-          exit 1
-        fi
-        
-        # Clean up
-        rm ${NDK_ZIP}
+        ANDROID_NDK_HOME=${{ runner.temp }}/android-ndk-r26d
+        echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+        wget -q https://dl.google.com/android/repository/android-ndk-r26d-linux.zip
+        unzip -q android-ndk-r26d-linux.zip -d ${{ runner.temp }}
       working-directory: ${{ runner.temp }}
-      shell: bash
 
     - name: Install Fuchsia SDK
       if: startsWith(matrix.platform, 'fuchsia')
       run: |
-        echo "Fuchsia SDK installation skipped - requires manual setup"
-        # Note: Fuchsia SDK requires authentication, will need to be set up separately
-        mkdir -p ${{ runner.temp }}/fuchsia-sdk
+        wget -q https://chrome-infra-packages.appspot.com/dl/fuchsia/sdk/core/linux-amd64/+/latest
+        unzip -q latest -d ${{ runner.temp }}/fuchsia-sdk
         echo "FUCHSIA_SDK=${{ runner.temp }}/fuchsia-sdk" >> $GITHUB_ENV
-      shell: bash
+      working-directory: ${{ runner.temp }}
 
     - name: Install iOS toolchain
       if: startsWith(matrix.platform, 'ios')
       run: |
         brew install ios-deploy
         echo "SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)" >> $GITHUB_ENV
-        echo "CMAKE_OSX_SYSROOT=$(xcrun --sdk iphoneos --show-sdk-path)" >> $GITHUB_ENV
-      shell: bash
 
     - name: Install cross-compilation tools (Linux)
       if: matrix.runner == 'ubuntu-latest' && !startsWith(matrix.platform, 'android') && !startsWith(matrix.platform, 'fuchsia')
@@ -215,107 +180,42 @@ jobs:
           gcc-riscv32-linux-gnu \
           g++-riscv32-linux-gnu \
           binutils-multiarch \
-          qemu-user-static \
-          make
-      shell: bash
+          qemu-user-static
 
-    - name: Configure CMake (Android)
-      if: startsWith(matrix.platform, 'android')
+    - name: Configure CMake
+      if: matrix.runner != 'windows-latest'
       working-directory: quickjs
-      shell: bash
       run: |
         mkdir -p build
         cd build
         
-        ANDROID_TOOLCHAIN="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake"
+        TOOLCHAIN_FILE=""
+        EXTRA_ARGS=""
         
-        if [ ! -f "${ANDROID_TOOLCHAIN}" ]; then
-          echo "❌ Android toolchain not found at ${ANDROID_TOOLCHAIN}"
-          exit 1
-        fi
-        
-        echo "Using Android NDK: ${ANDROID_NDK_HOME}"
-        echo "Using Android ABI: ${{ matrix.ndk_abi }}"
-        
-        cmake .. \
-          -DCMAKE_TOOLCHAIN_FILE="${ANDROID_TOOLCHAIN}" \
-          -DANDROID_ABI="${{ matrix.ndk_abi }}" \
-          -DANDROID_PLATFORM=android-21 \
-          -DANDROID_STL=c++_shared \
-          -DBUILD_SHARED_LIBS=ON \
-          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
-
-    - name: Configure CMake (Linux cross-compile)
-      if: matrix.platform == 'linux' && matrix.arch != 'x64'
-      working-directory: quickjs
-      shell: bash
-      run: |
-        mkdir -p build
-        cd build
-        
-        cmake .. \
-          -DCMAKE_SYSTEM_NAME=Linux \
-          -DCMAKE_C_COMPILER=${{ matrix.target }}-gcc \
-          -DCMAKE_CXX_COMPILER=${{ matrix.target }}-g++ \
-          -DBUILD_SHARED_LIBS=ON \
-          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
-
-    - name: Configure CMake (Linux native)
-      if: matrix.platform == 'linux' && matrix.arch == 'x64'
-      working-directory: quickjs
-      shell: bash
-      run: |
-        mkdir -p build
-        cd build
+        case "${{ matrix.platform }}" in
+          android)
+            TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
+            EXTRA_ARGS="-DANDROID_ABI=${{ matrix.arch == 'arm64' && 'arm64-v8a' || matrix.arch == 'arm' && 'armeabi-v7a' || matrix.arch == 'x64' && 'x86_64' || matrix.arch == 'ia32' && 'x86' || 'riscv64' && 'riscv64' }}"
+            ;;
+          fuchsia)
+            TOOLCHAIN_FILE="$FUCHSIA_SDK/cmake/toolchain.cmake"
+            ;;
+          ios)
+            EXTRA_ARGS="-DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch == 'arm64' && 'arm64' || 'x86_64' }}"
+            ;;
+          linux)
+            EXTRA_ARGS="-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_C_COMPILER=${{ matrix.target }}-gcc -DCMAKE_CXX_COMPILER=${{ matrix.target }}-g++"
+            ;;
+          macos)
+            EXTRA_ARGS="-DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch == 'arm64' && 'arm64' || 'x86_64' }}"
+            ;;
+        esac
         
         cmake .. \
           -DBUILD_SHARED_LIBS=ON \
-          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
-
-    - name: Configure CMake (macOS)
-      if: matrix.platform == 'macos'
-      working-directory: quickjs
-      shell: bash
-      run: |
-        mkdir -p build
-        cd build
-        
-        if [ "${{ matrix.arch }}" = "arm64" ]; then
-          ARCH_FLAG="-DCMAKE_OSX_ARCHITECTURES=arm64"
-        else
-          ARCH_FLAG="-DCMAKE_OSX_ARCHITECTURES=x86_64"
-        fi
-        
-        cmake .. \
-          ${ARCH_FLAG} \
-          -DBUILD_SHARED_LIBS=ON \
-          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
-
-    - name: Configure CMake (iOS)
-      if: startsWith(matrix.platform, 'ios')
-      working-directory: quickjs
-      shell: bash
-      run: |
-        mkdir -p build
-        cd build
-        
-        cmake .. \
-          -DCMAKE_SYSTEM_NAME=iOS \
-          -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
-          -DCMAKE_OSX_ARCHITECTURES=arm64 \
-          -DBUILD_SHARED_LIBS=ON \
-          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
-
-    - name: Configure CMake (Fuchsia)
-      if: startsWith(matrix.platform, 'fuchsia')
-      working-directory: quickjs
-      shell: bash
-      run: |
-        mkdir -p build
-        cd build
-        
-        echo "⚠️ Fuchsia build requires manual SDK setup - skipping configuration"
-        exit 1
+          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+          ${TOOLCHAIN_FILE:+-DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN_FILE} \
+          $EXTRA_ARGS
 
     - name: Configure CMake (Windows)
       if: matrix.runner == 'windows-latest'
@@ -325,6 +225,8 @@ jobs:
         New-Item -ItemType Directory -Force -Path build
         cd build
         
+        $EXTRA_ARGS = @()
+        
         cmake .. `
           -G "${{ matrix.generator }}" `
           -A "${{ matrix.arch_flag }}" `
@@ -332,76 +234,40 @@ jobs:
           -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
 
     - name: Build
-      if: success() && !startsWith(matrix.platform, 'fuchsia')
       working-directory: quickjs/build
-      shell: bash
-      run: |
-        if [ "${{ matrix.runner }}" = "windows-latest" ]; then
-          # Windows build
-          cmake --build . --config ${{ env.BUILD_TYPE }} -j ${NUMBER_OF_PROCESSORS}
-        else
-          # Unix-like build
-          if command -v nproc &> /dev/null; then
-            JOBS=$(nproc)
-          elif command -v sysctl &> /dev/null; then
-            JOBS=$(sysctl -n hw.ncpu)
-          else
-            JOBS=4
-          fi
-          cmake --build . --config ${{ env.BUILD_TYPE }} -j ${JOBS}
-        fi
-      shell: bash
+      run: cmake --build . --config ${{ env.BUILD_TYPE }} -j $(nproc 2>/dev/null || echo 4)
 
     - name: Determine library extension
       id: ext
       shell: bash
       run: |
-        if [ "${{ matrix.platform }}" = "windows" ]; then
+        if [[ "${{ matrix.platform }}" == "windows" ]]; then
           echo "EXT=dll" >> $GITHUB_OUTPUT
-        elif [ "${{ matrix.platform }}" = "macos" ] || [ "${{ matrix.platform }}" = "ios" ]; then
+        elif [[ "${{ matrix.platform }}" == "macos" ]] || [[ "${{ matrix.platform }}" == "ios" ]]; then
           echo "EXT=dylib" >> $GITHUB_OUTPUT
         else
           echo "EXT=so" >> $GITHUB_OUTPUT
         fi
 
     - name: Prepare artifacts
-      if: success()
-      shell: bash
       run: |
         mkdir -p artifacts
         LIB_NAME="libqjs-${{ matrix.platform }}-${{ matrix.arch }}.${{ steps.ext.outputs.EXT }}"
         
-        # Find and copy the built library
-        if [ "${{ matrix.platform }}" = "windows" ]; then
-          # Windows: find .dll files
+        # Find the built library
+        if [[ "${{ matrix.platform }}" == "windows" ]]; then
           find quickjs/build -name "*.dll" -type f -exec cp {} "artifacts/$LIB_NAME" \;
-        elif [ "${{ matrix.platform }}" = "macos" ] || [ "${{ matrix.platform }}" = "ios" ]; then
-          # macOS/iOS: find .dylib files
+        elif [[ "${{ matrix.platform }}" == "macos" ]] || [[ "${{ matrix.platform }}" == "ios" ]]; then
           find quickjs/build -name "*.dylib" -type f -exec cp {} "artifacts/$LIB_NAME" \;
         else
-          # Linux/Android: find .so files
           find quickjs/build -name "*.so" -type f -exec cp {} "artifacts/$LIB_NAME" \;
         fi
         
-        # Verify library was found
-        if [ -f "artifacts/$LIB_NAME" ]; then
-          echo "✅ Library created: $LIB_NAME"
-          file "artifacts/$LIB_NAME"
-        else
-          echo "❌ Library not found: $LIB_NAME"
-          echo "Searching for libraries in build directory:"
-          find quickjs/build -name "*.so" -o -name "*.dylib" -o -name "*.dll" | head -10
-          exit 1
-        fi
-        
-        # Create archive
+        # Also create a tarball for convenience
         cd artifacts
-        if [ "${{ matrix.platform }}" = "windows" ]; then
-          zip -r "../libqjs-${{ matrix.platform }}-${{ matrix.arch }}-${{ env.VERSION }}.zip" "$LIB_NAME"
-        else
-          tar -czf "../libqjs-${{ matrix.platform }}-${{ matrix.arch }}-${{ env.VERSION }}.tar.gz" "$LIB_NAME"
-        fi
+        tar -czf "../libqjs-${{ matrix.platform }}-${{ matrix.arch }}-${{ env.VERSION }}.tar.gz" "$LIB_NAME"
         cd ..
+      shell: bash
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -410,7 +276,6 @@ jobs:
         path: |
           artifacts/*
           libqjs-*.tar.gz
-          libqjs-*.zip
         retention-days: 7
 
   create-release:
@@ -427,13 +292,8 @@ jobs:
         path: artifacts
         merge-multiple: true
 
-    - name: Prepare release assets
-      run: |
-        mkdir -p release_assets
-        find artifacts -type f -name "*.so" -o -name "*.dylib" -o -name "*.dll" -o -name "*.tar.gz" -o -name "*.zip" | while read file; do
-          cp "$file" release_assets/
-        done
-        ls -la release_assets/
+    - name: Display structure of downloaded files
+      run: ls -R artifacts/
 
     - name: Extract version
       id: version
@@ -448,6 +308,10 @@ jobs:
         prerelease: false
         generate_release_notes: true
         files: |
-          release_assets/*
+          artifacts/**/*
+          artifacts/*.tar.gz
+          artifacts/*.so
+          artifacts/*.dylib
+          artifacts/*.dll
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
