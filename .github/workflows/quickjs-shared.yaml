@@ -12,306 +12,271 @@ on:
         default: 'v0.12.1'
 
 env:
-  QJS_REPO: https://github.com/quickjs-ng/quickjs.git
   BUILD_TYPE: Release
+  QJS_REPO: https://github.com/quickjs-ng/quickjs.git
 
 jobs:
-  build:
-    name: ${{ matrix.platform }}-${{ matrix.arch }}
-    runs-on: ${{ matrix.runner }}
+
+# ==========================================================
+# Linux (Full Cross Matrix incl. riscv)
+# ==========================================================
+  linux:
+    runs-on: ubuntu-latest
+
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # Android
-          - platform: android
-            arch: arm
-            runner: ubuntu-latest
-            target: arm-linux-androideabi
-          - platform: android
-            arch: arm64
-            runner: ubuntu-latest
-            target: aarch64-linux-android
-          - platform: android
-            arch: ia32
-            runner: ubuntu-latest
-            target: i686-linux-android
-          - platform: android
-            arch: riscv32
-            runner: ubuntu-latest
-            target: riscv32-linux-android
-          - platform: android
-            arch: riscv64
-            runner: ubuntu-latest
-            target: riscv64-linux-android
-          - platform: android
-            arch: x64
-            runner: ubuntu-latest
-            target: x86_64-linux-android
-          
-          # Fuchsia
-          - platform: fuchsia
-            arch: arm64
-            runner: ubuntu-latest
-            target: aarch64-fuchsia
-          - platform: fuchsia
-            arch: x64
-            runner: ubuntu-latest
-            target: x86_64-fuchsia
-          
-          # iOS
-          - platform: ios
-            arch: arm64
-            runner: macos-latest
-            target: arm64-apple-ios
-          
-          # Linux
-          - platform: linux
-            arch: arm
-            runner: ubuntu-latest
-            target: arm-linux-gnueabihf
-          - platform: linux
-            arch: arm64
-            runner: ubuntu-latest
-            target: aarch64-linux-gnu
-          - platform: linux
-            arch: ia32
-            runner: ubuntu-latest
-            target: i686-linux-gnu
-          - platform: linux
-            arch: riscv32
-            runner: ubuntu-latest
-            target: riscv32-linux-gnu
-          - platform: linux
-            arch: riscv64
-            runner: ubuntu-latest
-            target: riscv64-linux-gnu
-          - platform: linux
-            arch: x64
-            runner: ubuntu-latest
-            target: x86_64-linux-gnu
-          
-          # macOS
-          - platform: macos
-            arch: arm64
-            runner: macos-latest
-            target: arm64-apple-darwin
-          - platform: macos
-            arch: x64
-            runner: macos-latest
-            target: x86_64-apple-darwin
-          
-          # Windows
-          - platform: windows
-            arch: arm64
-            runner: windows-latest
-            target: aarch64-windows
-          - platform: windows
-            arch: ia32
-            runner: windows-latest
-            target: i686-windows
-          - platform: windows
-            arch: x64
-            runner: windows-latest
-            target: x86_64-windows
+        arch: [x64, arm, arm64, ia32, riscv32, riscv64]
 
     steps:
-    - name: Checkout QuickJS
-      uses: actions/checkout@v4
-      with:
-        repository: quickjs-ng/quickjs.git
-        ref: ${{inputs.version}}
-        path: quickjs
+      - uses: actions/checkout@v4
 
-    - name: Set version
-      id: version
-      run: |
-        if [[ "${{ github.event_name }}" == "push" ]]; then
-          VERSION=${GITHUB_REF_NAME#libqjs-}
-        else
-          VERSION=${{ github.event.inputs.version }}
-          VERSION=${VERSION#libqjs-}
-        fi
-        echo "VERSION=$VERSION" >> $GITHUB_ENV
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-      shell: bash
+      - name: Install cross toolchains
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            gcc g++ \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+            gcc-i686-linux-gnu g++-i686-linux-gnu \
+            gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
 
-    - name: Setup CMake
-      uses: jwlawson/actions-setup-cmake@v2
-      with:
-        cmake-version: '3.27.x'
+      - name: Clone quickjs
+        run: git clone --depth=1 -b ${{inputs.version}} $QJS_REPO quickjs
 
-    - name: Install Android NDK
-      if: startsWith(matrix.platform, 'android')
-      run: |
-        ANDROID_NDK_HOME=${{ runner.temp }}/android-ndk-r26d
-        echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
-        wget -q https://dl.google.com/android/repository/android-ndk-r26d-linux.zip
-        unzip -q android-ndk-r26d-linux.zip -d ${{ runner.temp }}
-      working-directory: ${{ runner.temp }}
+      - name: Configure Toolchain
+        run: |
+          case "${{ matrix.arch }}" in
+            x64)
+              CC=gcc
+              ;;
+            ia32)
+              CC=i686-linux-gnu-gcc
+              ;;
+            arm)
+              CC=arm-linux-gnueabihf-gcc
+              ;;
+            arm64)
+              CC=aarch64-linux-gnu-gcc
+              ;;
+            riscv64)
+              CC=riscv64-linux-gnu-gcc
+              ;;
+            riscv32)
+              sudo apt install -y gcc-riscv64-unknown-elf
+              CC=riscv64-unknown-elf-gcc
+              ;;
+          esac
 
-    - name: Install Fuchsia SDK
-      if: startsWith(matrix.platform, 'fuchsia')
-      run: |
-        wget -q https://chrome-infra-packages.appspot.com/dl/fuchsia/sdk/core/linux-amd64/+/latest
-        unzip -q latest -d ${{ runner.temp }}/fuchsia-sdk
-        echo "FUCHSIA_SDK=${{ runner.temp }}/fuchsia-sdk" >> $GITHUB_ENV
-      working-directory: ${{ runner.temp }}
+          mkdir build && cd build
+          cmake ../quickjs \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DCMAKE_C_COMPILER=$CC
 
-    - name: Install iOS toolchain
-      if: startsWith(matrix.platform, 'ios')
-      run: |
-        brew install ios-deploy
-        echo "SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)" >> $GITHUB_ENV
+      - name: Build
+        run: cmake --build build --target qjs --config Release
 
-    - name: Install cross-compilation tools (Linux)
-      if: matrix.runner == 'ubuntu-latest' && !startsWith(matrix.platform, 'android') && !startsWith(matrix.platform, 'fuchsia')
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          gcc-arm-linux-gnueabihf \
-          g++-arm-linux-gnueabihf \
-          gcc-aarch64-linux-gnu \
-          g++-aarch64-linux-gnu \
-          gcc-i686-linux-gnu \
-          g++-i686-linux-gnu \
-          gcc-riscv64-linux-gnu \
-          g++-riscv64-linux-gnu \
-          # gcc-riscv32-linux-gnu \
-          # g++-riscv32-linux-gnu \
-          binutils-multiarch \
-          qemu-user-static
+      - name: Package
+        run: |
+          mkdir dist
+          cp build/*qjs*.so \
+            dist/libqjs-linux-${{ matrix.arch }}.so
 
-    - name: Configure CMake
-      if: matrix.runner != 'windows-latest'
-      working-directory: quickjs
-      run: |
-        mkdir -p build
-        cd build
-        
-        TOOLCHAIN_FILE=""
-        EXTRA_ARGS=""
-        
-        case "${{ matrix.platform }}" in
-          android)
-            TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
-            EXTRA_ARGS="-DANDROID_ABI=${{ matrix.arch == 'arm64' && 'arm64-v8a' || matrix.arch == 'arm' && 'armeabi-v7a' || matrix.arch == 'x64' && 'x86_64' || matrix.arch == 'ia32' && 'x86' || 'riscv64' && 'riscv64' }}"
-            ;;
-          fuchsia)
-            TOOLCHAIN_FILE="$FUCHSIA_SDK/cmake/toolchain.cmake"
-            ;;
-          ios)
-            EXTRA_ARGS="-DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch == 'arm64' && 'arm64' || 'x86_64' }}"
-            ;;
-          linux)
-            EXTRA_ARGS="-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_C_COMPILER=${{ matrix.target }}-gcc -DCMAKE_CXX_COMPILER=${{ matrix.target }}-g++"
-            ;;
-          macos)
-            EXTRA_ARGS="-DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch == 'arm64' && 'arm64' || 'x86_64' }}"
-            ;;
-        esac
-        
-        cmake .. \
-          -DBUILD_SHARED_LIBS=ON \
-          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-          ${TOOLCHAIN_FILE:+-DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN_FILE} \
-          $EXTRA_ARGS
+      - name: SHA256
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
 
-    - name: Configure CMake (Windows)
-      if: matrix.runner == 'windows-latest'
-      working-directory: quickjs
-      shell: pwsh
-      run: |
-        New-Item -ItemType Directory -Force -Path build
-        cd build
-        
-        $EXTRA_ARGS = @()
-        
-        cmake .. `
-          -G "Visual Studio 17 2022" `
-          -A "${{ matrix.arch }}" `
-          -DBUILD_SHARED_LIBS=ON `
-          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
 
-    - name: Build
-      working-directory: quickjs/build
-      run: cmake --build . --config ${{ env.BUILD_TYPE }} -j $(nproc 2>/dev/null || echo 4)
 
-    - name: Determine library extension
-      id: ext
-      shell: bash
-      run: |
-        if [[ "${{ matrix.platform }}" == "windows" ]]; then
-          echo "EXT=dll" >> $GITHUB_OUTPUT
-        elif [[ "${{ matrix.platform }}" == "macos" ]] || [[ "${{ matrix.platform }}" == "ios" ]]; then
-          echo "EXT=dylib" >> $GITHUB_OUTPUT
-        else
-          echo "EXT=so" >> $GITHUB_OUTPUT
-        fi
 
-    - name: Prepare artifacts
-      run: |
-        mkdir -p artifacts
-        LIB_NAME="libqjs-${{ matrix.platform }}-${{ matrix.arch }}.${{ steps.ext.outputs.EXT }}"
-        
-        # Find the built library
-        if [[ "${{ matrix.platform }}" == "windows" ]]; then
-          find quickjs/build -name "*.dll" -type f -exec cp {} "artifacts/$LIB_NAME" \;
-        elif [[ "${{ matrix.platform }}" == "macos" ]] || [[ "${{ matrix.platform }}" == "ios" ]]; then
-          find quickjs/build -name "*.dylib" -type f -exec cp {} "artifacts/$LIB_NAME" \;
-        else
-          find quickjs/build -name "*.so" -type f -exec cp {} "artifacts/$LIB_NAME" \;
-        fi
-        
-        # Also create a tarball for convenience
-        cd artifacts
-        tar -czf "../libqjs-${{ matrix.platform }}-${{ matrix.arch }}-${{ env.VERSION }}.tar.gz" "$LIB_NAME"
-        cd ..
-      shell: bash
+# ==========================================================
+# Windows
+# ==========================================================
+  windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [x64, ia32]
 
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: libqjs-${{ matrix.platform }}-${{ matrix.arch }}-${{ env.VERSION }}
-        path: |
-          artifacts/*
-          libqjs-*.tar.gz
-        retention-days: 7
+    steps:
+      - uses: actions/checkout@v4
+      - run: git clone --depth=1 -b ${{inputs.version}} $QJS_REPO quickjs
 
-  create-release:
-    name: Create GitHub Release
-    needs: build
+      - name: Configure
+        run: |
+          cmake -S quickjs -B build `
+            -DBUILD_SHARED_LIBS=ON `
+            -A ${{ matrix.arch == 'x64' && 'x64' || 'Win32' }}
+
+      - name: Build
+        run: cmake --build build --target qjs --config Release
+
+      - name: Package
+        run: |
+          mkdir dist
+          copy build\Release\*.dll `
+            dist\libqjs-windows-${{ matrix.arch }}.dll
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+
+
+
+# ==========================================================
+# macOS Universal
+# ==========================================================
+  macos:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - run: git clone --depth=1 -b ${{inputs.version}} $QJS_REPO quickjs
+
+      - run: |
+          cmake -S quickjs -B build-x64 \
+            -DBUILD_SHARED_LIBS=ON \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64
+          cmake --build build-x64 --config Release
+
+      - run: |
+          cmake -S quickjs -B build-arm64 \
+            -DBUILD_SHARED_LIBS=ON \
+            -DCMAKE_OSX_ARCHITECTURES=arm64
+          cmake --build build-arm64 --target qjs --config Release
+
+      - run: |
+          mkdir dist
+          lipo -create \
+            build-x64/*.dylib \
+            build-arm64/*.dylib \
+            -output dist/libqjs-macos-universal.dylib
+
+      - run: shasum -a 256 dist/* > dist/SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+
+
+
+# ==========================================================
+# Android
+# ==========================================================
+  android:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/libqjs-')
-    permissions:
-      contents: write
+    strategy:
+      matrix:
+        abi: [armeabi-v7a, arm64-v8a, x86, x86_64]
+
     steps:
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
-        merge-multiple: true
+      - uses: actions/checkout@v4
+      - uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
 
-    - name: Display structure of downloaded files
-      run: ls -R artifacts/
+      - run: git clone --depth=1 -b ${{inputs.version}} $QJS_REPO quickjs
 
-    - name: Extract version
-      id: version
-      run: echo "version=${GITHUB_REF_NAME#libqjs-}" >> $GITHUB_OUTPUT
+      - run: |
+          cmake -S quickjs -B build \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=${{ matrix.abi }} \
+            -DANDROID_PLATFORM=android-21 \
+            -DBUILD_SHARED_LIBS=ON
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        name: QuickJS ${{ steps.version.outputs.version }}
-        tag_name: ${{ github.ref_name }}
-        draft: false
-        prerelease: false
-        generate_release_notes: true
-        files: |
-          artifacts/**/*
-          artifacts/*.tar.gz
-          artifacts/*.so
-          artifacts/*.dylib
-          artifacts/*.dll
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          cmake --build build --target qjs --config Release
+
+      - run: |
+          mkdir dist
+          cp build/*.so \
+            dist/libqjs-android-${{ matrix.abi }}.so
+          sha256sum dist/* > dist/SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+
+
+
+# ==========================================================
+# iOS Universal
+# ==========================================================
+  ios:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - run: git clone --depth=1 -b ${{inputs.version}} $QJS_REPO quickjs
+
+      - run: |
+          cmake -S quickjs -B build-device \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DBUILD_SHARED_LIBS=ON
+          cmake --build build-device --target qjs --config Release
+
+      - run: |
+          cmake -S quickjs -B build-sim \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DBUILD_SHARED_LIBS=ON
+          cmake --build build-sim --target qjs --config Release
+
+      - run: |
+          mkdir dist
+          lipo -create \
+            build-device/*.dylib \
+            build-sim/*.dylib \
+            -output dist/libqjs-ios-universal.dylib
+
+      - run: shasum -a 256 dist/* > dist/SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+
+
+
+# ==========================================================
+# Fuchsia
+# ==========================================================
+  fuchsia:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x64, arm64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Fuchsia SDK
+        run: |
+          curl -LO https://storage.googleapis.com/fuchsia/releases/sdk/linux/latest/sdk.tar.gz
+          tar xf sdk.tar.gz
+          export FUCHSIA_SDK=$PWD
+
+      - run: git clone --depth=1 -b ${{inputs.version}} $QJS_REPO quickjs
+
+      - run: |
+          mkdir build && cd build
+          cmake ../quickjs \
+            -DCMAKE_SYSTEM_NAME=Fuchsia \
+            -DCMAKE_C_COMPILER=$FUCHSIA_SDK/tools/${{ matrix.arch }}-fuchsia-clang \
+            -DBUILD_SHARED_LIBS=ON
+          cmake --build . --target qjs --config Release
+
+      - run: |
+          mkdir dist
+          cp build/*.so \
+            dist/libqjs-fuchsia-${{ matrix.arch }}.so
+          sha256sum dist/* > dist/SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
