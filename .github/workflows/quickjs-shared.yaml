@@ -47,14 +47,14 @@ jobs:
             target: x86_64-linux-android
           
           # Fuchsia
-          - platform: fuchsia
-            arch: arm64
-            runner: ubuntu-latest
-            target: aarch64-fuchsia
-          - platform: fuchsia
-            arch: x64
-            runner: ubuntu-latest
-            target: x86_64-fuchsia
+          # - platform: fuchsia
+          #   arch: arm64
+          #   runner: ubuntu-latest
+          #   target: aarch64-fuchsia
+          # - platform: fuchsia
+          #   arch: x64
+          #   runner: ubuntu-latest
+          #   target: x86_64-fuchsia
           
           # iOS
           - platform: ios
@@ -78,7 +78,7 @@ jobs:
           - platform: linux
             arch: riscv32
             runner: ubuntu-latest
-            target: riscv32-linux-gnu
+            target: riscv64-linux-gnu
           - platform: linux
             arch: riscv64
             runner: ubuntu-latest
@@ -180,6 +180,9 @@ jobs:
           android)
             TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
             EXTRA_ARGS="-DANDROID_ABI=${{ matrix.arch == 'arm64' && 'arm64-v8a' || matrix.arch == 'arm' && 'armeabi-v7a' || matrix.arch == 'x64' && 'x86_64' || matrix.arch == 'ia32' && 'x86' }} -DANDROID_PLATFORM=android-21"
+            if [[ "${{ matrix.arch }}" == "ia32" ]]; then
+              TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android-legacy.toolchain.cmake"
+            fi
             ;;
           fuchsia)
             TOOLCHAIN_FILE="$FUCHSIA_SDK/cmake/toolchain.cmake"
@@ -248,7 +251,7 @@ jobs:
         elif [[ "${{ matrix.platform }}" == "macos" ]] || [[ "${{ matrix.platform }}" == "ios" ]]; then
           find quickjs/build -name "*.dylib" -type f -exec cp {} "artifacts/$LIB_NAME" \;
         else
-          find quickjs/build -name "*.so" -type f -exec cp {} "artifacts/$LIB_NAME" \;
+          find quickjs/build -name "*.so*" -type f -exec cp {} "artifacts/$LIB_NAME" \;
         fi
         
         # Also create a tarball for convenience
