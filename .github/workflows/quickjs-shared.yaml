@@ -90,6 +90,7 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{inputs.version}}
           files: dist/*
 
 
@@ -124,6 +125,7 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{inputs.version}}
           files: dist/*
 
 
@@ -161,6 +163,7 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{inputs.version}}
           files: dist/*
 
 
@@ -199,6 +202,7 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{inputs.version}}
           files: dist/*
 
 
@@ -239,6 +243,7 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{inputs.version}}
           files: dist/*
 
 
@@ -279,4 +284,5 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{inputs.version}}
           files: dist/*
