@@ -1,0 +1,303 @@
+name: Build QuickJS Shared Libraries
+
+on:
+  push:
+    tags:
+      - 'libqjs-*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag'
+        required: true
+        default: 'v0.12.1'
+
+env:
+  QJS_REPO: https://github.com/quickjs-ng/quickjs.git
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Android
+          - platform: android
+            arch: arm
+            runner: ubuntu-latest
+            target: arm-linux-androideabi
+          - platform: android
+            arch: arm64
+            runner: ubuntu-latest
+            target: aarch64-linux-android
+          - platform: android
+            arch: ia32
+            runner: ubuntu-latest
+            target: i686-linux-android
+          - platform: android
+            arch: riscv32
+            runner: ubuntu-latest
+            target: riscv32-linux-android
+          - platform: android
+            arch: riscv64
+            runner: ubuntu-latest
+            target: riscv64-linux-android
+          - platform: android
+            arch: x64
+            runner: ubuntu-latest
+            target: x86_64-linux-android
+          
+          # Fuchsia
+          - platform: fuchsia
+            arch: arm64
+            runner: ubuntu-latest
+            target: aarch64-fuchsia
+          - platform: fuchsia
+            arch: x64
+            runner: ubuntu-latest
+            target: x86_64-fuchsia
+          
+          # iOS
+          - platform: ios
+            arch: arm64
+            runner: macos-latest
+            target: arm64-apple-ios
+          
+          # Linux
+          - platform: linux
+            arch: arm
+            runner: ubuntu-latest
+            target: arm-linux-gnueabihf
+          - platform: linux
+            arch: arm64
+            runner: ubuntu-latest
+            target: aarch64-linux-gnu
+          - platform: linux
+            arch: ia32
+            runner: ubuntu-latest
+            target: i686-linux-gnu
+          - platform: linux
+            arch: riscv32
+            runner: ubuntu-latest
+            target: riscv32-linux-gnu
+          - platform: linux
+            arch: riscv64
+            runner: ubuntu-latest
+            target: riscv64-linux-gnu
+          - platform: linux
+            arch: x64
+            runner: ubuntu-latest
+            target: x86_64-linux-gnu
+          
+          # macOS
+          - platform: macos
+            arch: arm64
+            runner: macos-latest
+            target: arm64-apple-darwin
+          - platform: macos
+            arch: x64
+            runner: macos-latest
+            target: x86_64-apple-darwin
+          
+          # Windows
+          - platform: windows
+            arch: arm64
+            runner: windows-latest
+            target: aarch64-windows
+          - platform: windows
+            arch: ia32
+            runner: windows-latest
+            target: i686-windows
+          - platform: windows
+            arch: x64
+            runner: windows-latest
+            target: x86_64-windows
+
+    steps:
+    - name: Checkout QuickJS
+      uses: actions/checkout@v4
+      with:
+        repository: quickjs-ng/quickjs.git
+        ref: ${{inputs.version}}
+        path: quickjs
+
+    - name: Set version
+      id: version
+      run: |
+        if [[ "${{ github.event_name }}" == "push" ]]; then
+          VERSION=${GITHUB_REF_NAME#libqjs-}
+        else
+          VERSION=${{ github.event.inputs.version }}
+          VERSION=${VERSION#libqjs-}
+        fi
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - name: Setup CMake
+      uses: jwlawson/actions-setup-cmake@v2
+      with:
+        cmake-version: '3.27.x'
+
+    - name: Install Android NDK
+      if: startsWith(matrix.platform, 'android')
+      run: |
+        ANDROID_NDK_HOME=${{ runner.temp }}/android-ndk
+        echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+        wget -q https://dl.google.com/android/repository/android-ndk-r26d-linux.zip
+        unzip -q android-ndk-r26d-linux.zip -d ${{ runner.temp }}
+      working-directory: ${{ runner.temp }}
+
+    - name: Install Fuchsia SDK
+      if: startsWith(matrix.platform, 'fuchsia')
+      run: |
+        wget -q https://chrome-infra-packages.appspot.com/dl/fuchsia/sdk/core/linux-amd64/+/latest
+        unzip -q latest -d ${{ runner.temp }}/fuchsia-sdk
+        echo "FUCHSIA_SDK=${{ runner.temp }}/fuchsia-sdk" >> $GITHUB_ENV
+      working-directory: ${{ runner.temp }}
+
+    - name: Install iOS toolchain
+      if: startsWith(matrix.platform, 'ios')
+      run: |
+        brew install ios-deploy
+        echo "SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)" >> $GITHUB_ENV
+
+    - name: Install cross-compilation tools (Linux)
+      if: matrix.runner == 'ubuntu-latest' && !startsWith(matrix.platform, 'android') && !startsWith(matrix.platform, 'fuchsia')
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          gcc-arm-linux-gnueabihf \
+          g++-arm-linux-gnueabihf \
+          gcc-aarch64-linux-gnu \
+          g++-aarch64-linux-gnu \
+          gcc-i686-linux-gnu \
+          g++-i686-linux-gnu \
+          gcc-riscv64-linux-gnu \
+          g++-riscv64-linux-gnu \
+          gcc-riscv32-linux-gnu \
+          g++-riscv32-linux-gnu \
+          binutils-multiarch \
+          qemu-user-static
+
+    - name: Configure CMake
+      working-directory: quickjs
+      run: |
+        mkdir -p build
+        cd build
+        
+        TOOLCHAIN_FILE=""
+        EXTRA_ARGS=""
+        
+        case "${{ matrix.platform }}" in
+          android)
+            TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
+            EXTRA_ARGS="-DANDROID_ABI=${{ matrix.arch == 'arm64' && 'arm64-v8a' || matrix.arch == 'arm' && 'armeabi-v7a' || matrix.arch == 'x64' && 'x86_64' || matrix.arch == 'ia32' && 'x86' || 'riscv64' && 'riscv64' }}"
+            ;;
+          fuchsia)
+            TOOLCHAIN_FILE="$FUCHSIA_SDK/cmake/toolchain.cmake"
+            ;;
+          ios)
+            EXTRA_ARGS="-DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch == 'arm64' && 'arm64' || 'x86_64' }}"
+            ;;
+          linux)
+            EXTRA_ARGS="-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_C_COMPILER=${{ matrix.target }}-gcc -DCMAKE_CXX_COMPILER=${{ matrix.target }}-g++"
+            ;;
+          macos)
+            EXTRA_ARGS="-DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch == 'arm64' && 'arm64' || 'x86_64' }}"
+            ;;
+          windows)
+            EXTRA_ARGS="-DCMAKE_SYSTEM_NAME=Windows -DCMAKE_C_COMPILER=${{ matrix.target }}-gcc -DCMAKE_CXX_COMPILER=${{ matrix.target }}-g++"
+            ;;
+        esac
+        
+        cmake .. \
+          -DBUILD_SHARED_LIBS=ON \
+          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+          ${TOOLCHAIN_FILE:+-DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN_FILE} \
+          $EXTRA_ARGS
+
+    - name: Build
+      working-directory: quickjs/build
+      run: cmake --build . --config ${{ env.BUILD_TYPE }} -j $(nproc 2>/dev/null || echo 4)
+
+    - name: Determine library extension
+      id: ext
+      shell: bash
+      run: |
+        if [[ "${{ matrix.platform }}" == "windows" ]]; then
+          echo "EXT=dll" >> $GITHUB_OUTPUT
+        elif [[ "${{ matrix.platform }}" == "macos" ]] || [[ "${{ matrix.platform }}" == "ios" ]]; then
+          echo "EXT=dylib" >> $GITHUB_OUTPUT
+        else
+          echo "EXT=so" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Prepare artifacts
+      run: |
+        mkdir -p artifacts
+        LIB_NAME="libqjs-${{ matrix.platform }}-${{ matrix.arch }}.${{ steps.ext.outputs.EXT }}"
+        
+        # Find the built library
+        if [[ "${{ matrix.platform }}" == "windows" ]]; then
+          find quickjs/build -name "*.dll" -type f -exec cp {} "artifacts/$LIB_NAME" \;
+        elif [[ "${{ matrix.platform }}" == "macos" ]] || [[ "${{ matrix.platform }}" == "ios" ]]; then
+          find quickjs/build -name "*.dylib" -type f -exec cp {} "artifacts/$LIB_NAME" \;
+        else
+          find quickjs/build -name "*.so" -type f -exec cp {} "artifacts/$LIB_NAME" \;
+        fi
+        
+        # Also create a tarball for convenience
+        cd artifacts
+        tar -czf "../libqjs-${{ matrix.platform }}-${{ matrix.arch }}-${{ env.VERSION }}.tar.gz" "$LIB_NAME"
+        cd ..
+      shell: bash
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: libqjs-${{ matrix.platform }}-${{ matrix.arch }}-${{ env.VERSION }}
+        path: |
+          artifacts/*
+          libqjs-*.tar.gz
+        retention-days: 7
+
+  create-release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/libqjs-')
+    permissions:
+      contents: write
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+        merge-multiple: true
+
+    - name: Display structure of downloaded files
+      run: ls -R artifacts/
+
+    - name: Extract version
+      id: version
+      run: echo "version=${GITHUB_REF_NAME#libqjs-}" >> $GITHUB_OUTPUT
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: QuickJS ${{ steps.version.outputs.version }}
+        tag_name: ${{ github.ref_name }}
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+        files: |
+          artifacts/**/*
+          artifacts/*.tar.gz
+          artifacts/*.so
+          artifacts/*.dylib
+          artifacts/*.dll
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
