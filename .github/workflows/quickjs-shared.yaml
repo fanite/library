@@ -177,8 +177,8 @@ jobs:
           g++-i686-linux-gnu \
           gcc-riscv64-linux-gnu \
           g++-riscv64-linux-gnu \
-          gcc-riscv32-linux-gnu \
-          g++-riscv32-linux-gnu \
+          # gcc-riscv32-linux-gnu \
+          # g++-riscv32-linux-gnu \
           binutils-multiarch \
           qemu-user-static
 
@@ -228,8 +228,8 @@ jobs:
         $EXTRA_ARGS = @()
         
         cmake .. `
-          -G "${{ matrix.generator }}" `
-          -A "${{ matrix.arch_flag }}" `
+          -G "Visual Studio 17 2022" `
+          -A "${{ matrix.arch }}" `
           -DBUILD_SHARED_LIBS=ON `
           -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
 
