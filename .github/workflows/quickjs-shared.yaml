@@ -182,6 +182,7 @@ jobs:
             EXTRA_ARGS="-DANDROID_ABI=${{ matrix.arch == 'arm64' && 'arm64-v8a' || matrix.arch == 'arm' && 'armeabi-v7a' || matrix.arch == 'x64' && 'x86_64' || matrix.arch == 'ia32' && 'x86' }} -DANDROID_PLATFORM=android-21"
             if [[ "${{ matrix.arch }}" == "ia32" ]]; then
               TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android-legacy.toolchain.cmake"
+              EXTRA_ARGS="$EXTRA_ARGS -DANDROID_LEGACY_ARCH=i686 -DNO_X87_FPCW=1 -DCMAKE_C_FLAGS=-mstackrealign -DCMAKE_CXX_FLAGS=-mstackrealign"
             fi
             ;;
           fuchsia)
