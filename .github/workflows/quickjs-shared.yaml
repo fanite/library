@@ -179,7 +179,7 @@ jobs:
         case "${{ matrix.platform }}" in
           android)
             TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
-            EXTRA_ARGS="-DANDROID_ABI=${{ matrix.arch == 'arm64' && 'arm64-v8a' || matrix.arch == 'arm' && 'armeabi-v7a' || matrix.arch == 'x64' && 'x86_64' || matrix.arch == 'ia32' && 'x86' }}"
+            EXTRA_ARGS="-DANDROID_ABI=${{ matrix.arch == 'arm64' && 'arm64-v8a' || matrix.arch == 'arm' && 'armeabi-v7a' || matrix.arch == 'x64' && 'x86_64' || matrix.arch == 'ia32' && 'x86' }} -DANDROID_PLATFORM=android-21"
             ;;
           fuchsia)
             TOOLCHAIN_FILE="$FUCHSIA_SDK/cmake/toolchain.cmake"
@@ -197,6 +197,7 @@ jobs:
         
         cmake .. \
           -DBUILD_SHARED_LIBS=ON \
+          -DQJS_BUILD_LIBC=ON \
           -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
           ${TOOLCHAIN_FILE:+-DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN_FILE} \
           $EXTRA_ARGS
@@ -213,8 +214,9 @@ jobs:
         
         cmake .. `
           -G "Visual Studio 17 2022" `
-          -A "${{ matrix.arch }}" `
+          -A ${{ matrix.arch == 'x64' && 'x64' || 'Win32' }} `
           -DBUILD_SHARED_LIBS=ON `
+          -DQJS_BUILD_LIBC=ON `
           -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
 
     - name: Build
@@ -237,6 +239,8 @@ jobs:
       run: |
         mkdir -p artifacts
         LIB_NAME="libqjs-${{ matrix.platform }}-${{ matrix.arch }}.${{ steps.ext.outputs.EXT }}"
+
+        ls -al quickjs/build
         
         # Find the built library
         if [[ "${{ matrix.platform }}" == "windows" ]]; then
