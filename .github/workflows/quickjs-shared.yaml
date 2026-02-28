@@ -280,21 +280,15 @@ jobs:
     - name: Display structure of downloaded files
       run: ls -R artifacts/
 
-    - name: Extract version
-      id: version
-      run: echo "version=${GITHUB_REF_NAME#libqjs-}" >> $GITHUB_OUTPUT
-
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        name: QuickJS ${{ steps.version.outputs.version }}
-        tag_name: ${{ github.ref_name }}
+        name: libqjs_${{ inputs.version }}
+        tag_name: libqjs_${{ inputs.version }}
         draft: false
         prerelease: false
         generate_release_notes: true
         files: |
-          artifacts/**/*
-          artifacts/*.tar.gz
           artifacts/*.so
           artifacts/*.dylib
           artifacts/*.dll
