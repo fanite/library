@@ -21,30 +21,30 @@ jobs:
       matrix:
         include:
           # Android
-          - platform: android
-            arch: arm
-            runner: ubuntu-latest
-            target: arm-linux-androideabi
-          - platform: android
-            arch: arm64
-            runner: ubuntu-latest
-            target: aarch64-linux-android
-          - platform: android
-            arch: ia32
-            runner: ubuntu-latest
-            target: i686-linux-android
-          - platform: android
-            arch: riscv32
-            runner: ubuntu-latest
-            target: riscv32-linux-android
-          - platform: android
-            arch: riscv64
-            runner: ubuntu-latest
-            target: riscv64-linux-android
-          - platform: android
-            arch: x64
-            runner: ubuntu-latest
-            target: x86_64-linux-android
+          # - platform: android
+          #   arch: arm
+          #   runner: ubuntu-latest
+          #   target: arm-linux-androideabi
+          # - platform: android
+          #   arch: arm64
+          #   runner: ubuntu-latest
+          #   target: aarch64-linux-android
+          # - platform: android
+          #   arch: ia32
+          #   runner: ubuntu-latest
+          #   target: i686-linux-android
+          # - platform: android
+          #   arch: riscv32
+          #   runner: ubuntu-latest
+          #   target: riscv32-linux-android
+          # - platform: android
+          #   arch: riscv64
+          #   runner: ubuntu-latest
+          #   target: riscv64-linux-android
+          # - platform: android
+          #   arch: x64
+          #   runner: ubuntu-latest
+          #   target: x86_64-linux-android
           
           # Fuchsia
           # - platform: fuchsia
