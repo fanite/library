@@ -9,7 +9,7 @@ on:
         default: '8.18.0'
 
 env:
-  LIBCURL_REPO: https://curl.se/download/curl-${{ inputs.version }}.zip
+  LIBCURL_REPO: https://github.com/curl/curl.git
   BUILD_TYPE: Release
 
 jobs:
@@ -119,6 +119,7 @@ jobs:
         repository: curl/curl.git
         ref: ${{inputs.version}}
         path: libcurl
+        
     - name: Setup CMake
       uses: jwlawson/actions-setup-cmake@v2
       with:
