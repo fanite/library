@@ -6,7 +6,7 @@ on:
       version:
         description: 'Version'
         required: true
-        default: '8.18.0'
+        default: 'curl-8_18_0'
 
 env:
   LIBCURL_REPO: https://github.com/curl/curl.git
@@ -113,16 +113,11 @@ jobs:
             target: x86_64-windows
 
     steps:
-    - name: Set up libcurl version
-      run: |
-        MODIFIED=$(echo "curl-${{ inputs.version }}" | sed 's/\./_/g')
-        echo "VERSION=${MODIFIED}" >> $GITHUB_ENV
-        
     - name: Checkout Libcurl
       uses: actions/checkout@v4
       with:
         repository: curl/curl.git
-        ref: ${{ env.VERSION }}
+        ref: ${{ inputs.version }}
         path: libcurl
         
     - name: Setup CMake
@@ -289,8 +284,8 @@ jobs:
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        name: libcurl_${{ inputs.version }}
-        tag_name: libcurl_${{ inputs.version }}
+        name: ${{ inputs.version }}
+        tag_name: ${{ inputs.version }}
         draft: false
         prerelease: false
         generate_release_notes: true
