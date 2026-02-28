@@ -113,11 +113,16 @@ jobs:
             target: x86_64-windows
 
     steps:
+    - name: Set up libcurl version
+      run: |
+        MODIFIED=$(echo "curl-${{ inputs.version }}" | sed 's/\./_/g')
+        echo "VERSION=${MODIFIED}" >> $GITHUB_ENV
+        
     - name: Checkout Libcurl
       uses: actions/checkout@v4
       with:
         repository: curl/curl.git
-        ref: ${{inputs.version}}
+        ref: ${{ env.VERSION }}
         path: libcurl
         
     - name: Setup CMake
