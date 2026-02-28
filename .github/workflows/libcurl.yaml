@@ -201,6 +201,7 @@ jobs:
           -DCURL_USE_LIBPSL=OFF \
           -DBUILD_SHARED_LIBS=ON \
           -DCURL_DISABLE_WEBSOCKETS=ON \
+          -DENABLE_SCHANNEL=ON \
           -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
           ${TOOLCHAIN_FILE:+-DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN_FILE} \
           $EXTRA_ARGS
@@ -222,7 +223,10 @@ jobs:
           -DCURL_USE_LIBPSL=OFF `
           -DBUILD_SHARED_LIBS=ON `
           -DCURL_DISABLE_WEBSOCKETS=ON `
-          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+          -DENABLE_SCHANNEL=ON `
+          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
+          -DCMAKE_C_COMPILER=${{ matrix.target }}-gcc `
+          -DCMAKE_CXX_COMPILER=${{ matrix.target }}-g++
 
     - name: Build
       working-directory: libcurl/build
