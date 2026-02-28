@@ -113,6 +113,12 @@ jobs:
             target: x86_64-windows
 
     steps:
+    - name: Checkout Libcurl
+      uses: actions/checkout@v4
+      with:
+        repository: curl/curl.git
+        ref: ${{inputs.version}}
+        path: libcurl
     - name: Setup CMake
       uses: jwlawson/actions-setup-cmake@v2
       with:
@@ -159,13 +165,6 @@ jobs:
           g++-riscv64-linux-gnu \
           binutils-multiarch \
           qemu-user-static
-
-    - name: Download Libcurl
-      run: |
-        mkdir -p libcurl
-        wget -q $LIBCURL_REPO -O source.zip
-        unzip -q source.zip -d ${{ runner.temp }}/libcurl
-        mv ${{ runner.temp }}/libcurl/curl-* libcurl
 
     - name: Configure CMake
       if: matrix.runner != 'windows-latest'
